@@ -1,178 +1,136 @@
-# AeroCore 03 — UAV Twin
+# AeroTwin — Real-Time Drone Digital Twin
 
-A real-time UAV digital twin and flight monitoring system built around an **ESP32 + MPU6050**, combining embedded sensor fusion, live HTTP telemetry, and a browser-based 3D UAV visualization.
+Final project in the AeroCore series. An ESP32 and MPU6050 track real-time
+orientation and stream it to a browser, where a 3D UAV model, an aviation-style
+attitude indicator, and a simulated failsafe monitoring system all mirror the
+physical sensor live — with flight recording, replay, and auto-generated
+flight reports.
 
-The goal of AeroCore 03 is to create a software representation of a physical UAV attitude system that responds to real sensor data rather than relying only on simulated motion.
-
-## Project Overview
-
-AeroCore 03 continuously reads orientation data from an MPU6050 connected to an ESP32, estimates **roll and pitch using sensor fusion**, and exposes the processed data through a lightweight HTTP server.
-
-A browser-based 3D interface consumes the telemetry and visualizes the UAV's orientation in real time.
-
-```text
-          MPU6050
-             │
-             │ I²C
-             ▼
-           ESP32
-             │
-      Sensor Fusion
-             │
-      Roll / Pitch Data
-             │
-        HTTP /data
-             │
-             ▼
-     AeroCore 03 Web UI
-             │
-             ▼
-       3D UAV Digital Twin
-```
-
-## Current Features
-
-- **Real-time MPU6050 sensor acquisition**
-- **I²C communication between ESP32 and MPU6050**
-- **Complementary-filter-based roll and pitch estimation**
-- **Steady sensor update loop at approximately 66 Hz**
-- **ESP32 Wi-Fi connectivity**
-- **Lightweight HTTP server running on port 80**
-- **Live JSON telemetry through `/data`**
-- **Browser-based UAV digital twin visualization**
-- **Real sensor data driving the digital twin instead of purely simulated values**
-
-##  Sensor Fusion
-
-The ESP32 reads:
-
-- Accelerometer X, Y, Z
-- Gyroscope X, Y, Z
-
-Accelerometer angles provide a gravity-based reference while gyroscope measurements provide responsive angular-rate information.
-
-A complementary filter combines both:
-
-```text
-Gyroscope ───────┐
-                 ├──► Complementary Filter ──► Roll / Pitch
-Accelerometer ───┘
-```
-
-Current filter weighting:
-
-```text
-98% Gyroscope
- 2% Accelerometer
-```
-
-This provides a responsive and relatively stable orientation estimate for the digital twin.
-
-## 📡 Telemetry
-
-The ESP32 hosts a simple HTTP server.
-
-### Root endpoint
-
-```text
-GET /
-```
-
-Returns:
-
-```text
-AeroTwin ESP32 is running. Visit /data for JSON.
-```
-
-### Live data endpoint
-
-```text
-GET /data
-```
-
-Example response:
-
-```json
-{
-  "roll": 12.45,
-  "pitch": -3.21,
-  "t": 12345
-}
-```
-
-The `t` value represents the ESP32 millisecond timestamp.
-
-## 🖥️ Digital Twin
-
-The web interface acts as the visual layer of the system.
-
-The digital twin receives live telemetry from the ESP32 and uses the orientation values to represent the UAV's current attitude.
-
-```text
-Physical Sensor State
-        ↓
-     ESP32
-        ↓
-   HTTP Telemetry
-        ↓
-    Web Interface
-        ↓
-   3D UAV Twin
-```
-
-This creates a direct relationship between the physical sensing layer and the digital representation.
-
-## 🛠️ Hardware
-
-### Required
-
-- ESP32 development board
-- MPU6050 IMU
-- Breadboard
-- Jumper wires
-- USB cable
-
-### MPU6050 → ESP32
-
-| MPU6050 | ESP32 |
-|---|---|
-| VCC | 3.3V |
-| GND | GND |
-| SDA | GPIO 21 |
-| SCL | GPIO 22 |
-
-## 💻 Software & Technologies
-
-- **C++ / Arduino**
-- **ESP32**
-- **MPU6050**
-- **I²C**
-- **Wi-Fi**
-- **HTTP / REST-style JSON endpoint**
-- **HTML**
-- **CSS**
-- **JavaScript**
-- **3D Web Visualization**
-
-
-## 🎯 Project Objective
-
-AeroCore 03 is designed to demonstrate the integration of:
-
-**Embedded Systems + Sensor Fusion + Wireless Telemetry + Web Technologies + 3D Visualization + UAV Flight Monitoring**
-
-The long-term objective is to develop a small-scale UAV digital-twin platform where physical sensor behaviour is reflected in a live digital model and flight data can be monitored, recorded, analysed, and replayed.
-
-## 👩‍💻 Author
-
-**Rajeshwari**
-
-Computer Engineering
+Series context: **AeroCore01** (PID flight controller) → **AeroCore02**
+(payload stabilization) → **AeroTwin** (real-time digital twin + flight
+monitoring), closing the loop from "fly a drone" to "model and monitor one
+digitally in real time."
 
 ---
 
-### Project Series
+## What it does
 
-**AeroCore 01** — UAV Flight Controller  
-**AeroCore 02** — UAV Payload Stabilization  
-**AeroCore 03** — UAV Twin Flight Monitoring
+- Reads live orientation (roll, pitch) from an MPU6050 using a complementary
+  filter for sensor fusion
+- Streams that data over WiFi via HTTP polling to a browser dashboard
+- Renders a 3D UAV model (X-configuration quadcopter, spinning propellers,
+  camera gimbal) that tilts in real time to match the physical sensor
+- Displays a cockpit-style **artificial horizon** instrument
+- Runs a **Flight Intelligence / Failsafe state machine**: classifies the
+  system as `NORMAL`, `WARNING`, or `FAILSAFE ACTIVE` based on rolling
+  stability analysis, absolute tilt limits, frozen-sensor detection, and
+  telemetry timeout
+- Supports **Record → Stop → Replay** of a flight, with a scrubber and an
+  auto-generated **Flight Report** (duration, max roll/pitch, warning count,
+  failsafe events, telemetry loss %, stability score)
+- Offers **Chase Cam** and **FPV Cam** views, plus a draggable camera-angle
+  gizmo to orbit the 3D view freely
+
+---
+
+## Hardware
+
+All reused from AeroCore01/02 — nothing new to buy.
+
+| Component | Purpose |
+|---|---|
+| ESP32 dev board | Main controller |
+| MPU6050 | Accelerometer + gyroscope (I2C address `0x68`) |
+| SSD1306 OLED *(optional)* | Local status display, not required for the dashboard to work |
+
+### Wiring
+
+| MPU6050 pin | ESP32 pin |
+|---|---|
+| VCC | 3.3V |
+| GND | GND |
+| SCL | GPIO 22 |
+| SDA | GPIO 21 |
+| AD0 | GND (sets I2C address to `0x68`) |
+
+---
+
+## Software architecture
+
+```
+┌─────────────────────────────────────────────┐
+│  ESP32 + MPU6050                             │
+│  1. Read raw accel + gyro (I2C)              │
+│  2. Complementary filter -> roll, pitch      │
+│  3. Serve /data as JSON over HTTP            │
+│     (fixed ~66Hz fusion loop, decoupled      │
+│      from request timing)                    │
+└───────────────────┬───────────────────────────┘
+                     │  HTTP polling, ~100ms interval
+                     ▼
+┌─────────────────────────────────────────────┐
+│  Browser Dashboard (HTML + Three.js)         │
+│  - Polls /data, updates 3D model live        │
+│  - Artificial horizon + gauge dials          │
+│  - Flight Intelligence state machine         │
+│  - Record / Replay / Flight Report           │
+│  - Chase / FPV camera + orbit gizmo          │
+└─────────────────────────────────────────────┘
+```
+
+**Firmware:** `firmware/AeroTwin_Full_HTTP.ino` — Arduino framework, uses
+`Wire.h`, `WiFi.h`, `WebServer.h`. No external libraries beyond the ESP32
+board package.
+
+**Dashboard:** `aerotwin_3d_v6.html` — plain HTML/CSS/JS, Three.js (r128) via
+CDN, no build step, no other dependencies.
+
+
+## Sensor fusion
+
+Raw accelerometer angle is noisy; raw gyro angle drifts over time. A
+complementary filter blends both:
+
+```
+angle = 0.98 * (angle + gyro_rate * dt) + 0.02 * (accel_angle)
+```
+
+Sensor fusion runs on a **fixed ~66Hz timer inside the ESP32's main loop**,
+independent of when the browser happens to request `/data`. This was a
+deliberate fix — an earlier version computed orientation only on-demand
+inside the HTTP handler, which tied the filter's timing to network jitter
+and caused visibly laggy, slow-to-settle orientation on an unstable network.
+
+**Known limitation:** yaw is not implemented with absolute reference (no
+magnetometer), so only roll and pitch are tracked. A magnetometer (e.g.
+QMC5883L) or a 9-DOF IMU (e.g. BNO055) would be the natural next step for
+full heading tracking.
+
+---
+
+## Flight Intelligence / Failsafe system
+
+A rolling window (last ~30 samples, ~3 seconds) of roll/pitch readings is
+used to compute standard deviation — a measure of how erratic the motion is,
+not just its instantaneous value. This is combined with:
+
+- **Frozen sensor detection** — same exact reading repeated 5+ times in a
+  row is treated as a likely stuck I2C read
+- **Absolute attitude limit** — tilt beyond ±45°
+- **Telemetry timeout** — a failed/unanswered poll request
+
+into a three-state machine: `NORMAL → WARNING → FAILSAFE`, each with a
+specific reason displayed in the UI.
+
+
+## Record, Replay, and Flight Report
+
+- **Record** captures every polled sample (timestamp, roll, pitch, state,
+  reason) into memory in the browser
+- **Replay** plays the captured sequence back on the 3D model at its
+  original ~100ms sample rate, with a scrubber for seeking to any point
+- Stopping a recording automatically generates a **Flight Report**:
+  duration, max roll, max pitch, warning count, failsafe event count,
+  telemetry loss percentage, and an overall stability score
+
+
