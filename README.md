@@ -1,4 +1,4 @@
-# AeroTwin — Real-Time Drone Digital Twin
+# AeroTwin — Real-Time Drone Digital Twin Flight Monitoring
 
 Final project in the AeroCore series. An ESP32 and MPU6050 track real-time
 orientation and stream it to a browser, where a 3D UAV model, an aviation-style
@@ -133,4 +133,8 @@ specific reason displayed in the UI.
   duration, max roll, max pitch, warning count, failsafe event count,
   telemetry loss percentage, and an overall stability score
 
-
+Future Work
+Magnetometer or 9-DOF IMU for absolute yaw tracking
+A servo-driven gimbal that physically stabilizes using the same orientation data, planned as a separate hardware experiment so the working software core is not put at risk
+On-device flight logging (SD card) so recordings persist across power cycles
+Revisit WebSocket streaming with more robust reconnection handling, if lower latency becomes necessary
