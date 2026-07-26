@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>AeroTwin - Flight Instrumentation</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, "Segoe UI", sans-serif;
+      background: #0a0a0a;
+      color: #eee;
+      margin: 0;
+      overflow: hidden;
+    }
+    #ui {
+      position: absolute;
+      top: 24px;
+      left: 24px;
+      z-index: 10;
+      background: rgba(15,17,20,0.9);
+      backdrop-filter: blur(8px);
+      padding: 22px 24px;
+      border-radius: 14px;
+      max-width: 300px;
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+    }
+    #ui h2 { margin: 0 0 14px 0; font-size: 20px; font-weight: 600; color: #fff; }
+    #ui h2 span { color: #4fc3f7; }
+    .ip-row { display: flex; gap: 6px; margin-bottom: 14px; }
+    input {
+      font-size: 13px; padding: 8px 10px; width: 150px;
+      background: #1a1d21; border: 1px solid #333; border-radius: 6px; color: #eee;
+    }
+    button {
+      font-size: 13px; padding: 8px 14px; cursor: pointer;
+      background: #4fc3f7; border: none; border-radius: 6px; color: #001018; font-weight: 600;
+    }
+    button:hover { background: #6fd3ff; }
+    button.secondary { background: #2a2d31; color: #eee; }
+    button.secondary:hover { background: #3a3d41; }
+    button.active { background: #ff8a65; color: #1a0a00; }
+    #status {
+      font-size: 13px; font-weight: 600; margin-bottom: 16px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    #status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .connected { color: #4caf50; }
+    .connected::before { background: #4caf50; box-shadow: 0 0 8px #4caf50; }
+    .disconnected { color: #f44336; }
+    .disconnected::before { background: #f44336; }
+
+    .readout-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+    .gauge-box {
+      background: #14161a;
+      border: 1px solid #2a2d31;
+      border-radius: 10px;
+      padding: 10px 8px 6px;
+      text-align: center;
+    }
+    .gauge-svg { width: 100%; height: 60px; }
+    .gauge-value {
+      font-family: "SF Mono", "Courier New", monospace;
+      font-size: 22px;
+      font-weight: 700;
+      color: #4fc3f7;
+      margin-top: -22px;
+    }
+    .gauge-value.pitch { color: #ff8a65; }
+    .gauge-label {
+      font-size: 10px;
+      color: #777;
+      letter-spacing: 1.5px;
+      margin-top: 2px;
+    }
+    .sparkline {
+      width: 100%;
+      height: 20px;
+      display: block;
+      margin-top: 4px;
+    }
+
+    .view-toggle { display: flex; gap: 6px; margin-bottom: 12px; }
+    .view-toggle button { flex: 1; }
+
+    #intelPanel {
+      margin-top: 12px;
+      background: #14161a;
+      border: 1px solid #2a2d31;
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+    #intelHeader {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      text-align: left;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #14161a;
+      border: 1px solid #2a2d31;
+    }
+    #intelHeader::after {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    #intelHeader.normal::after { background: #4caf50; box-shadow: 0 0 6px #4caf50; }
+    #intelHeader.warning::after { background: #1a1400; }
+    #intelHeader.anomaly::after { background: #fff; }
+    #intelHeader.normal { color: #4caf50; }
+    #intelHeader.warning {
+      color: #1a1400;
+      background: #ffb300;
+    }
+    #intelHeader.anomaly {
+      color: #fff;
+      background: #c62828;
+      animation: pulse 0.8s infinite;
+    }
+    #intelReason {
+      font-size: 11px;
+      color: #999;
+      text-align: center;
+      margin-bottom: 8px;
+      min-height: 14px;
+    }
+    .intel-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #aaa;
+      padding: 3px 0;
+      font-family: "SF Mono", "Courier New", monospace;
+    }
+    .intel-row span.val { font-weight: 700; }
+    .val-low { color: #4caf50; }
+    .val-med { color: #ffb300; }
+    .val-high { color: #f44336; }
+
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    /* Artificial Horizon */
+    #horizonContainer {
+      position: absolute;
+      bottom: 30px;
+      right: 30px;
+      z-index: 10;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      overflow: hidden;
+      border: 4px solid #333;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+      background: #000;
+    }
+    #horizonSky {
+      position: absolute;
+      width: 300%;
+      height: 300%;
+      left: -100%;
+      top: -100%;
+      background: linear-gradient(to bottom,
+        #1a5fb4 0%, #4a90d9 45%, #4a90d9 50%, #8b5a2b 55%, #4a2f1a 100%);
+      transform-origin: center center;
+    }
+    #horizonFixedMarks {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    #horizonLabel {
+      position: absolute;
+      bottom: -28px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 11px;
+      color: #888;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    #recordControls {
+      display: flex;
+      gap: 6px;
+      margin-top: 12px;
+    }
+    #recordControls button { flex: 1; font-size: 12px; padding: 8px 6px; }
+    button.recording {
+      background: #c62828 !important;
+      color: #fff !important;
+      animation: pulse 0.8s infinite;
+    }
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    #reportPanel {
+      display: none;
+      margin-top: 12px;
+      background: #14161a;
+      border: 1px solid #2a2d31;
+      border-radius: 10px;
+      padding: 14px;
+    }
+    #reportPanel h3 {
+      margin: 0 0 10px 0;
+      font-size: 13px;
+      letter-spacing: 1px;
+      color: #4fc3f7;
+    }
+    .report-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #ccc;
+      padding: 3px 0;
+      font-family: "SF Mono", "Courier New", monospace;
+    }
+    .report-row span.rval { font-weight: 700; color: #fff; }
+
+    #replayBar {
+      margin-top: 8px;
+      display: none;
+    }
+    #replayBar input { width: 100%; }
+    #replayStatus { font-size: 11px; color: #888; text-align: center; margin-top: 4px; }
+
+    #cameraGizmo {
+      position: absolute;
+      top: 24px;
+      right: 24px;
+      z-index: 10;
+      width: 90px;
+      height: 90px;
+      border-radius: 50%;
+      background: rgba(15,17,20,0.85);
+      border: 2px solid #333;
+      cursor: grab;
+      touch-action: none;
+    }
+    #cameraGizmo:active { cursor: grabbing; }
+    #cameraGizmo svg { width: 100%; height: 100%; }
+    #gizmoLabel {
+      position: absolute;
+      top: 118px;
+      right: 24px;
+      width: 90px;
+      text-align: center;
+      font-size: 10px;
+      color: #777;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      z-index: 10;
+    }
+
+    #canvas-container { width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <h2>Aero<span>Twin</span></h2>
+    <div class="ip-row">
+      <input type="text" id="ipInput" value="10.249.125.245">
+      <button onclick="startPolling()">Connect</button>
+    </div>
+    <div id="status" class="disconnected">Not connected</div>
+
+    <div class="readout-grid">
+      <div class="gauge-box">
+        <svg class="gauge-svg" viewBox="0 0 100 55" id="gaugeRoll">
+          <path d="M 8 50 A 42 42 0 0 1 92 50" fill="none" stroke="#2a2d31" stroke-width="6" stroke-linecap="round"/>
+          <path id="gaugeRollArc" d="M 50 50 L 50 50" stroke="#4fc3f7" stroke-width="6" fill="none" stroke-linecap="round"/>
+          <line id="gaugeRollNeedle" x1="50" y1="50" x2="50" y2="12" stroke="#4fc3f7" stroke-width="2"/>
+          <circle cx="50" cy="50" r="3" fill="#4fc3f7"/>
+        </svg>
+        <div class="gauge-value" id="rollVal">--</div>
+        <div class="gauge-label">ROLL</div>
+        <canvas class="sparkline" id="sparkRoll" width="120" height="20"></canvas>
+      </div>
+      <div class="gauge-box">
+        <svg class="gauge-svg" viewBox="0 0 100 55" id="gaugePitch">
+          <path d="M 8 50 A 42 42 0 0 1 92 50" fill="none" stroke="#2a2d31" stroke-width="6" stroke-linecap="round"/>
+          <line id="gaugePitchNeedle" x1="50" y1="50" x2="50" y2="12" stroke="#ff8a65" stroke-width="2"/>
+          <circle cx="50" cy="50" r="3" fill="#ff8a65"/>
+        </svg>
+        <div class="gauge-value pitch" id="pitchVal">--</div>
+        <div class="gauge-label">PITCH</div>
+        <canvas class="sparkline" id="sparkPitch" width="120" height="20"></canvas>
+      </div>
+    </div>
+
+    <div class="view-toggle">
+      <button id="btnChase" class="active" onclick="setView('chase')">Chase Cam</button>
+      <button id="btnFPV" class="secondary" onclick="setView('fpv')">FPV Cam</button>
+    </div>
+
+    <div id="intelPanel">
+      <div id="intelHeader" class="normal">NORMAL</div>
+      <div id="intelReason"></div>
+      <div class="intel-row"><span>Roll deviation</span><span class="val" id="rollDevVal">--</span></div>
+      <div class="intel-row"><span>Pitch deviation</span><span class="val" id="pitchDevVal">--</span></div>
+      <div class="intel-row"><span>Stability</span><span class="val" id="stabilityVal">--</span></div>
+    </div>
+
+    <div id="recordControls">
+      <button id="btnRecord" onclick="toggleRecording()">● Record</button>
+      <button id="btnReplay" onclick="startReplay()" disabled>▶ Replay</button>
+    </div>
+
+    <div id="replayBar">
+      <input type="range" id="replaySlider" min="0" max="100" value="0" oninput="seekReplay(this.value)">
+      <div id="replayStatus">Frame 0 / 0</div>
+    </div>
+
+    <div id="reportPanel">
+      <h3>FLIGHT REPORT</h3>
+      <div class="report-row"><span>Duration</span><span class="rval" id="repDuration">--</span></div>
+      <div class="report-row"><span>Max Roll</span><span class="rval" id="repMaxRoll">--</span></div>
+      <div class="report-row"><span>Max Pitch</span><span class="rval" id="repMaxPitch">--</span></div>
+      <div class="report-row"><span>Warnings</span><span class="rval" id="repWarnings">--</span></div>
+      <div class="report-row"><span>Failsafe Events</span><span class="rval" id="repFailsafe">--</span></div>
+      <div class="report-row"><span>Telemetry Loss</span><span class="rval" id="repLoss">--</span></div>
+      <div class="report-row"><span>Stability Score</span><span class="rval" id="repStability">--</span></div>
+    </div>
+  </div>
+
+  <div id="horizonContainer">
+    <div id="horizonSky"></div>
+    <div id="horizonFixedMarks"></div>
+    <div id="horizonLabel">Attitude Indicator</div>
+  </div>
+
+  <div id="cameraGizmo">
+    <svg viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="46" fill="none" stroke="#2a2d31" stroke-width="2"/>
+      <text x="50" y="14" text-anchor="middle" fill="#666" font-size="9">N</text>
+      <text x="50" y="94" text-anchor="middle" fill="#666" font-size="9">S</text>
+      <text x="10" y="54" text-anchor="middle" fill="#666" font-size="9">W</text>
+      <text x="90" y="54" text-anchor="middle" fill="#666" font-size="9">E</text>
+      <line id="gizmoNeedle" x1="50" y1="50" x2="50" y2="14" stroke="#4fc3f7" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="50" cy="50" r="4" fill="#4fc3f7"/>
+    </svg>
+  </div>
+  <div id="gizmoLabel">Camera Angle</div>
+
+  <div id="canvas-container"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    // ================= SCENE SETUP =================
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0a0a);
+    scene.fog = new THREE.Fog(0x0a0a0a, 8, 20);
+
+    const chaseCamera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    let camTheta = 45;   // azimuth, degrees
+    let camPhi = 38;     // elevation, degrees
+    const camRadius = 5.2;
+
+    function updateChaseCameraPosition() {
+      const thetaRad = THREE.MathUtils.degToRad(camTheta);
+      const phiRad = THREE.MathUtils.degToRad(camPhi);
+      chaseCamera.position.set(
+        camRadius * Math.cos(phiRad) * Math.sin(thetaRad),
+        camRadius * Math.sin(phiRad),
+        camRadius * Math.cos(phiRad) * Math.cos(thetaRad)
+      );
+      chaseCamera.lookAt(0, 0.2, 0);
+    }
+    updateChaseCameraPosition();
+
+    const fpvCamera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 100);
+
+    let activeCamera = chaseCamera;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    container.appendChild(renderer.domElement);
+
+    scene.add(new THREE.AmbientLight(0x8899aa, 0.5));
+    const key = new THREE.DirectionalLight(0xffffff, 1.1);
+    key.position.set(4, 6, 3);
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    scene.add(key);
+    scene.add(new THREE.DirectionalLight(0x4fc3f7, 0.4).translateX(-4));
+
+    const groundGeo = new THREE.CircleGeometry(6, 32);
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x1c1f24, roughness: 0.9 });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.55;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    const grid = new THREE.GridHelper(10, 20, 0x5a7d8c, 0x2e3338);
+    grid.position.y = -0.549;
+    scene.add(grid);
+
+    // ================= UAV MODEL =================
+    const droneGroup = new THREE.Group();
+
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1c1f24, roughness: 0.35, metalness: 0.6 });
+    const accentMat = new THREE.MeshStandardMaterial({ color: 0xff5722, roughness: 0.4, metalness: 0.3 });
+    const armMat = new THREE.MeshStandardMaterial({ color: 0x2a2e33, roughness: 0.5, metalness: 0.5 });
+    const propMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.6, transparent: true, opacity: 0.85 });
+    const glowMat = new THREE.MeshStandardMaterial({ color: 0x4fc3f7, emissive: 0x1a5f7a, roughness: 0.3 });
+
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 0.22, 8), bodyMat);
+    hub.castShadow = true;
+    droneGroup.add(hub);
+
+    const topPlate = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.04, 8), accentMat);
+    topPlate.position.y = 0.13;
+    droneGroup.add(topPlate);
+
+    const gimbalArm = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.15, 6), armMat);
+    gimbalArm.position.y = -0.18;
+    droneGroup.add(gimbalArm);
+    const camBall = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 12), bodyMat);
+    camBall.position.y = -0.28;
+    camBall.castShadow = true;
+    droneGroup.add(camBall);
+    const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.02, 12), glowMat);
+    lens.rotation.x = Math.PI / 2;
+    lens.position.set(0, -0.28, 0.09);
+    droneGroup.add(lens);
+
+    const armAngles = [45, 135, 225, 315];
+    const armLength = 0.85;
+    const propGroups = [];
+
+    armAngles.forEach((deg) => {
+      const rad = THREE.MathUtils.degToRad(deg);
+      const dx = Math.cos(rad);
+      const dz = Math.sin(rad);
+
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(armLength, 0.05, 0.09), armMat);
+      arm.position.set(dx * armLength / 2, 0, dz * armLength / 2);
+      arm.rotation.y = -rad;
+      arm.castShadow = true;
+      droneGroup.add(arm);
+
+      const motor = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.14, 12), bodyMat);
+      motor.position.set(dx * armLength, 0.03, dz * armLength);
+      motor.castShadow = true;
+      droneGroup.add(motor);
+
+      const motorCap = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.04, 12), accentMat);
+      motorCap.position.set(dx * armLength, 0.11, dz * armLength);
+      droneGroup.add(motorCap);
+
+      const propGroup = new THREE.Group();
+      propGroup.position.set(dx * armLength, 0.14, dz * armLength);
+      const blade1 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.008, 0.05), propMat);
+      const blade2 = blade1.clone();
+      blade2.rotation.y = Math.PI / 2;
+      propGroup.add(blade1, blade2);
+      droneGroup.add(propGroup);
+      propGroups.push(propGroup);
+
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.32, 6), armMat);
+      leg.position.set(dx * 0.3, -0.28, dz * 0.3);
+      leg.rotation.x = THREE.MathUtils.degToRad(dz * 15);
+      leg.rotation.z = THREE.MathUtils.degToRad(-dx * 15);
+      droneGroup.add(leg);
+    });
+
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.18, 8), glowMat);
+    nose.position.set(0, 0.02, 0.42);
+    nose.rotation.x = Math.PI / 2;
+    droneGroup.add(nose);
+
+    scene.add(droneGroup);
+
+    // FPV camera mounted just behind the nose, looking forward
+    fpvCamera.position.set(0, 0.05, 0.35);
+    fpvCamera.rotation.set(0, 0, 0);
+    droneGroup.add(fpvCamera);
+
+    function animate() {
+      requestAnimationFrame(animate);
+      propGroups.forEach(p => p.rotation.y += 0.35);
+      renderer.render(scene, activeCamera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      [chaseCamera, fpvCamera].forEach(c => {
+        c.aspect = window.innerWidth / window.innerHeight;
+        c.updateProjectionMatrix();
+      });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    function setView(mode) {
+      if (mode === 'chase') {
+        activeCamera = chaseCamera;
+        document.getElementById('btnChase').className = 'active';
+        document.getElementById('btnFPV').className = 'secondary';
+      } else {
+        activeCamera = fpvCamera;
+        document.getElementById('btnFPV').className = 'active';
+        document.getElementById('btnChase').className = 'secondary';
+      }
+    }
+
+    // ================= ARTIFICIAL HORIZON =================
+    const horizonSky = document.getElementById('horizonSky');
+
+    function updateHorizon(roll, pitch) {
+      // Pitch shifts the sky vertically, roll rotates it
+      const pitchOffsetPx = Math.max(-60, Math.min(60, pitch * 1.3));
+      horizonSky.style.transform =
+        `translateY(${pitchOffsetPx}px) rotate(${-roll}deg)`;
+    }
+
+    // ================= FAILSAFE STATE MACHINE =================
+    const TILT_THRESHOLD = 45;
+    let lastRoll = null, lastPitch = null, frozenCount = 0;
+
+    function detectFrozenSensor(roll, pitch) {
+      if (lastRoll !== null && roll === lastRoll && pitch === lastPitch) {
+        frozenCount++;
+      } else {
+        frozenCount = 0;
+      }
+      lastRoll = roll;
+      lastPitch = pitch;
+      return frozenCount >= 5; // same exact value 5 polls in a row = likely stuck sensor
+    }
+
+    function setFlightState(state, reason) {
+      const header = document.getElementById('intelHeader');
+      const reasonEl = document.getElementById('intelReason');
+      header.textContent = state === 'FAILSAFE' ? 'FAILSAFE ACTIVE' : state;
+      header.className = state === 'FAILSAFE' ? 'anomaly' : (state === 'WARNING' ? 'warning' : 'normal');
+      reasonEl.textContent = reason || '';
+      return state;
+    }
+
+    function computeState(roll, pitch, rollDevLabel, pitchDevLabel) {
+      const frozen = detectFrozenSensor(roll, pitch);
+      if (frozen) return setFlightState('FAILSAFE', 'Reason: Sensor data frozen');
+      if (Math.abs(roll) > TILT_THRESHOLD || Math.abs(pitch) > TILT_THRESHOLD)
+        return setFlightState('FAILSAFE', 'Reason: Attitude limit exceeded');
+      if (rollDevLabel === 'High' || pitchDevLabel === 'High')
+        return setFlightState('WARNING', 'Reason: High instability detected');
+      if (rollDevLabel === 'Medium' || pitchDevLabel === 'Medium')
+        return setFlightState('WARNING', 'Reason: Moderate instability');
+      return setFlightState('NORMAL', '');
+    }
+
+    // ================= RECORD / REPLAY / REPORT =================
+    let isRecording = false;
+    let recordedFrames = [];
+    let recordStartTime = null;
+    let pollStats = { total: 0, failed: 0 };
+
+    let isReplaying = false;
+    let replayTimer = null;
+    let replayIndex = 0;
+
+    function toggleRecording() {
+      const btn = document.getElementById('btnRecord');
+      if (!isRecording) {
+        isRecording = true;
+        recordedFrames = [];
+        pollStats = { total: 0, failed: 0 };
+        recordStartTime = Date.now();
+        btn.textContent = '■ Stop';
+        btn.classList.add('recording');
+        document.getElementById('btnReplay').disabled = true;
+        document.getElementById('reportPanel').style.display = 'none';
+        document.getElementById('replayBar').style.display = 'none';
+      } else {
+        isRecording = false;
+        btn.textContent = '● Record';
+        btn.classList.remove('recording');
+        if (recordedFrames.length > 0) {
+          document.getElementById('btnReplay').disabled = false;
+          generateReport();
+        }
+      }
+    }
+
+    function generateReport() {
+      const frames = recordedFrames;
+      const durationMs = frames[frames.length - 1].t - frames[0].t;
+      const durSec = Math.floor(durationMs / 1000);
+      const durationStr = `${String(Math.floor(durSec / 60)).padStart(2,'0')}:${String(durSec % 60).padStart(2,'0')}`;
+
+      const maxRoll = Math.max(...frames.map(f => Math.abs(f.roll)));
+      const maxPitch = Math.max(...frames.map(f => Math.abs(f.pitch)));
+      const warnings = frames.filter(f => f.state === 'WARNING').length;
+      const failsafeEvents = frames.filter(f => f.state === 'FAILSAFE').length;
+      const lossPct = pollStats.total > 0 ? (pollStats.failed / pollStats.total * 100) : 0;
+      const normalCount = frames.filter(f => f.state === 'NORMAL').length;
+      const stabilityScore = Math.round((normalCount / frames.length) * 100);
+
+      document.getElementById('repDuration').textContent = durationStr;
+      document.getElementById('repMaxRoll').textContent = maxRoll.toFixed(1) + '°';
+      document.getElementById('repMaxPitch').textContent = maxPitch.toFixed(1) + '°';
+      document.getElementById('repWarnings').textContent = warnings;
+      document.getElementById('repFailsafe').textContent = failsafeEvents;
+      document.getElementById('repLoss').textContent = lossPct.toFixed(1) + '%';
+      document.getElementById('repStability').textContent = stabilityScore + '%';
+      document.getElementById('reportPanel').style.display = 'block';
+    }
+
+    function startReplay() {
+      if (recordedFrames.length === 0) return;
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      isReplaying = true;
+      replayIndex = 0;
+      document.getElementById('replayBar').style.display = 'block';
+      document.getElementById('replaySlider').max = recordedFrames.length - 1;
+
+      if (replayTimer) clearInterval(replayTimer);
+      replayTimer = setInterval(() => {
+        if (replayIndex >= recordedFrames.length) {
+          clearInterval(replayTimer);
+          document.getElementById('replayStatus').textContent = 'Replay finished';
+          return;
+        }
+        applyReplayFrame(replayIndex);
+        replayIndex++;
+      }, 100);
+    }
+
+    function applyReplayFrame(idx) {
+      const f = recordedFrames[idx];
+      document.getElementById('rollVal').textContent = f.roll.toFixed(1) + '°';
+      document.getElementById('pitchVal').textContent = f.pitch.toFixed(1) + '°';
+      updateGauge('gaugeRollNeedle', f.roll);
+      updateGauge('gaugePitchNeedle', f.pitch);
+      droneGroup.rotation.z = THREE.MathUtils.degToRad(f.roll);
+      droneGroup.rotation.x = THREE.MathUtils.degToRad(f.pitch);
+      updateHorizon(f.roll, f.pitch);
+      setFlightState(f.state === 'FAILSAFE' ? 'FAILSAFE' : f.state, f.reason || '');
+      document.getElementById('replaySlider').value = idx;
+      document.getElementById('replayStatus').textContent = `Frame ${idx + 1} / ${recordedFrames.length}`;
+    }
+
+    function seekReplay(value) {
+      if (replayTimer) clearInterval(replayTimer);
+      replayIndex = parseInt(value);
+      applyReplayFrame(replayIndex);
+    }
+
+    // ================= GAUGE + SPARKLINE RENDERING =================
+    function updateGauge(needleId, value) {
+      const clamped = Math.max(-90, Math.min(90, value));
+      const needle = document.getElementById(needleId);
+      needle.setAttribute('transform', `rotate(${clamped} 50 50)`);
+    }
+
+    function drawSparkline(canvasId, history, color) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      if (history.length < 2) return;
+
+      const maxAbs = Math.max(10, ...history.map(v => Math.abs(v)));
+      ctx.beginPath();
+      history.forEach((v, i) => {
+        const x = (i / (HISTORY_LENGTH - 1)) * w;
+        const y = h / 2 - (v / maxAbs) * (h / 2 - 2);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
+    // ================= FLIGHT INTELLIGENCE (rolling stability analysis) =================
+    const HISTORY_LENGTH = 30; // ~3 seconds at 100ms polling
+    const rollHistory = [];
+    const pitchHistory = [];
+
+    function stdDev(arr) {
+      if (arr.length < 2) return 0;
+      const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+      const variance = arr.reduce((a, b) => a + (b - mean) ** 2, 0) / arr.length;
+      return Math.sqrt(variance);
+    }
+
+    function classifyDeviation(dev) {
+      if (dev < 2) return { label: 'Low', cls: 'val-low' };
+      if (dev < 6) return { label: 'Medium', cls: 'val-med' };
+      return { label: 'High', cls: 'val-high' };
+    }
+
+    function updateFlightIntelligence(roll, pitch) {
+      rollHistory.push(roll);
+      pitchHistory.push(pitch);
+      if (rollHistory.length > HISTORY_LENGTH) rollHistory.shift();
+      if (pitchHistory.length > HISTORY_LENGTH) pitchHistory.shift();
+
+      const rollDev = stdDev(rollHistory);
+      const pitchDev = stdDev(pitchHistory);
+
+      const rollClass = classifyDeviation(rollDev);
+      const pitchClass = classifyDeviation(pitchDev);
+
+      const rollEl = document.getElementById('rollDevVal');
+      const pitchEl = document.getElementById('pitchDevVal');
+      rollEl.textContent = rollClass.label;
+      rollEl.className = 'val ' + rollClass.cls;
+      pitchEl.textContent = pitchClass.label;
+      pitchEl.className = 'val ' + pitchClass.cls;
+
+      const stabilityEl = document.getElementById('stabilityVal');
+      if (rollClass.label === 'High' || pitchClass.label === 'High') {
+        stabilityEl.textContent = 'POOR'; stabilityEl.className = 'val val-high';
+      } else if (rollClass.label === 'Medium' || pitchClass.label === 'Medium') {
+        stabilityEl.textContent = 'MODERATE'; stabilityEl.className = 'val val-med';
+      } else {
+        stabilityEl.textContent = 'GOOD'; stabilityEl.className = 'val val-low';
+      }
+
+      return { rollLabel: rollClass.label, pitchLabel: pitchClass.label };
+    }
+
+    // ================= CAMERA GIZMO (drag to orbit chase camera) =================
+    const gizmo = document.getElementById('cameraGizmo');
+    const gizmoNeedle = document.getElementById('gizmoNeedle');
+    let dragging = false;
+    let lastX = 0, lastY = 0;
+
+    function updateGizmoNeedle() {
+      // Needle points in the direction the camera is currently facing (opposite of theta, since it looks at origin)
+      const displayAngle = (camTheta + 180) % 360;
+      gizmoNeedle.setAttribute('transform', `rotate(${displayAngle} 50 50)`);
+    }
+    updateGizmoNeedle();
+
+    gizmo.addEventListener('pointerdown', (e) => {
+      dragging = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      gizmo.setPointerCapture(e.pointerId);
+    });
+
+    gizmo.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      lastX = e.clientX;
+      lastY = e.clientY;
+
+      camTheta = (camTheta - dx * 0.7) % 360;
+      camPhi = Math.max(8, Math.min(80, camPhi - dy * 0.5));
+
+      updateChaseCameraPosition();
+      updateGizmoNeedle();
+    });
+
+    gizmo.addEventListener('pointerup', (e) => {
+      dragging = false;
+      gizmo.releasePointerCapture(e.pointerId);
+    });
+
+    // ================= HTTP POLLING =================
+    let pollTimer = null;
+
+    async function poll(ip) {
+      if (isReplaying) return; // don't let live polling fight with replay
+
+      if (isRecording) pollStats.total++;
+
+      try {
+        const response = await fetch(`http://${ip}/data`);
+        const data = await response.json();
+
+        document.getElementById('status').textContent = 'Connected';
+        document.getElementById('status').className = 'connected';
+        document.getElementById('rollVal').textContent = data.roll.toFixed(1) + '°';
+        document.getElementById('pitchVal').textContent = data.pitch.toFixed(1) + '°';
+        updateGauge('gaugeRollNeedle', data.roll);
+        updateGauge('gaugePitchNeedle', data.pitch);
+
+        droneGroup.rotation.z = THREE.MathUtils.degToRad(data.roll);
+        droneGroup.rotation.x = THREE.MathUtils.degToRad(data.pitch);
+        updateHorizon(data.roll, data.pitch);
+
+        const { rollLabel, pitchLabel } = updateFlightIntelligence(data.roll, data.pitch);
+        drawSparkline('sparkRoll', rollHistory, '#4fc3f7');
+        drawSparkline('sparkPitch', pitchHistory, '#ff8a65');
+        const state = computeState(data.roll, data.pitch, rollLabel, pitchLabel);
+        const reasonText = document.getElementById('intelReason').textContent;
+
+        if (isRecording) {
+          recordedFrames.push({
+            t: Date.now() - recordStartTime,
+            roll: data.roll,
+            pitch: data.pitch,
+            state: state,
+            reason: reasonText
+          });
+        }
+      } catch (e) {
+        document.getElementById('status').textContent = 'Connection error';
+        document.getElementById('status').className = 'disconnected';
+        setFlightState('FAILSAFE', 'Reason: Telemetry timeout');
+
+        if (isRecording) {
+          pollStats.failed++;
+          recordedFrames.push({
+            t: Date.now() - recordStartTime,
+            roll: lastRoll || 0,
+            pitch: lastPitch || 0,
+            state: 'FAILSAFE',
+            reason: 'Reason: Telemetry timeout'
+          });
+        }
+      }
+    }
+
+    function startPolling() {
+      const ip = document.getElementById('ipInput').value.trim();
+      if (pollTimer) clearInterval(pollTimer);
+      poll(ip);
+      pollTimer = setInterval(() => poll(ip), 100);
+    }
+  </script>
+</body>
+</html>
